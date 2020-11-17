@@ -47,14 +47,16 @@ __NR_write is the number of the write() system call
 
 const int long_size = sizeof(void*);
 
-void getdata(pid_t child, long addr,
-             char *str, int len)
-{   char *laddr;
+void getdata(pid_t child, long addr, char *str, int len){
+
+    char *laddr;
     int i, j;
+
     union u {
             long val;
             char chars[long_size];
     }data;
+
     i = 0;
     j = len / long_size;
     laddr = str;
