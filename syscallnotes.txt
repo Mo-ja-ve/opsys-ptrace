@@ -1,0 +1,16 @@
+
+
+**********************************************************
+notes for system calls assignment 2 - operating systems
+**********************************************************
+
+- when you look at %rax or %eax, they stores the return result of the systemcall upon exit, upon entry stores the syscall number (orignial_rax orignial_eax)
+
+- everytime a system call is made, wait() will return then the tracer will use ptrace(..,..,...),ect, to read registers and memory then store it in some user-level memory buffer
+  while(1) is in infinite loop which ill run over and over, each time wait returns a syscall is made, so over and over registers and memory will be dumped into that memeroy buff
+ 
+- everytime openat()(syscall), is called read() write() will operate on that file, based on that file discriptor returned, ALSO read() and write() will return file read/write 
+  volume amounts, meaning: the amount of bytes written and read to the file
+
+-  
+
