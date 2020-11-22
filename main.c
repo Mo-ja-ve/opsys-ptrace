@@ -19,12 +19,13 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <sched.h>
+#include "syscall_table.h"
+
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 #define MAX_STRING_SIZE 50       // maximum number of bytes to be read from tracee
-
 
 char syscall_buf[MAX_STRING_SIZE];
 
@@ -47,14 +48,16 @@ __NR_write is the number of the write() system call
 
 const int long_size = sizeof(void*);
 
-void getdata(pid_t child, long addr,
-             char *str, int len)
-{   char *laddr;
+void getdata(pid_t child, long addr, char *str, int len){
+
+    char *laddr;
     int i, j;
+
     union u {
             long val;
             char chars[long_size];
     }data;
+
     i = 0;
     j = len / long_size;
     laddr = str;
@@ -85,6 +88,7 @@ int generic_call(int child, unsigned long params[4], long* syscall_nr, long* sys
   long orig_rax, rax;
   int nargs=0;
 
+  // PEEKUSER, read a word from the tracees user area, at the address
   rax = ptrace(PTRACE_PEEKUSER, child, 8 * RAX, NULL);
 
   if( rax == -ENOSYS )
@@ -93,7 +97,7 @@ int generic_call(int child, unsigned long params[4], long* syscall_nr, long* sys
     insyscall = 1;
 
   orig_rax = ptrace(PTRACE_PEEKUSER,child, 8 * ORIG_RAX, NULL);
-
+  //dumping of registers
   params[0] = ptrace(PTRACE_PEEKUSER, child, 8 * RDI, NULL);
   params[1] = ptrace(PTRACE_PEEKUSER,child, 8 * RSI, NULL);
   params[2] = ptrace(PTRACE_PEEKUSER,child, 8 * RDX, NULL);
@@ -133,8 +137,9 @@ int main(int argc, char* argv[])
     int status;
     int maxlength;
     int ret;
-    int syscall_count= 0;
+    int syscall_count=0, sysRead_count=0, sysOpen_count =0, sysWrite_count=0, sysExit_count=0, sysClose_count =0, sysOther_count= 0;
     void (*display_func)(FILE*, int);
+
 
     if(argc <= 1)
     {
@@ -145,10 +150,11 @@ int main(int argc, char* argv[])
     child = fork();
 
     if(child == 0) {
-        ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+        ptrace(PTRACE_TRACEME, 0, NULL, NULL);// PTRACE_TRACEME indicates this process is to be traced by it's parent
         char com_buf[1000];
         char* myargv[100];
 
+        //reformating argv into "myargv"
         myargv[0] = argv[1];
         i = 2;
         for(; i < argc; i++)
@@ -158,7 +164,6 @@ int main(int argc, char* argv[])
 
         myargv[i-1]=NULL;
 
-
         kill(getpid(), SIGSTOP);
 
         execvp(myargv[0], myargv);
@@ -166,29 +171,30 @@ int main(int argc, char* argv[])
     }
     else
     {
-
-       ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACEEXEC | PTRACE_O_TRACEFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEVFORK | PTRACE_O_TRACEVFORKDONE | PTRACE_O_TRACEEXIT | PTRACE_O_TRACESYSGOOD  );
-       ptrace(PTRACE_SYSCALL, child, 0, 0);
+       //      PTRACE_SETOPTIONS sets the options for ptrace(long list of options in last parameter space),
+       ptrace( PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACEEXEC | PTRACE_O_TRACEFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEVFORK | PTRACE_O_TRACEVFORKDONE | PTRACE_O_TRACEEXIT | PTRACE_O_TRACESYSGOOD  );
+       ptrace( PTRACE_SYSCALL, child, 0, 0);
 
        while(1)
        {
-
-        int child =  wait(&status);
+        int child =  wait(&status);// wait() suspends the parent process until it's child exits or receives a signal
 
            if( child <=  0)
-
            {
              fprintf(stderr, "Child exited\n");
              break;
            }
 
+          // mapping data about the process into memory??
            ret = generic_call(child, params, &syscall_nr, &syscall_ret);
-
 
            switch(syscall_nr)
             {
-
              case __NR_read:
+
+
+                syscall_count++;
+                sysRead_count++;
 
                 // ADD CODE: handle read() system call
 
@@ -196,11 +202,16 @@ int main(int argc, char* argv[])
 
              case __NR_write:
 
+                syscall_count++;
+                sysWrite_count++;
                 // ADD CODE: handle write() system call
 
                break;
 
              case __NR_openat:
+
+                syscall_count++;
+                sysOpen_count++;
 
                 // ADD CODE: handle openat() system call
 
@@ -208,29 +219,48 @@ int main(int argc, char* argv[])
 
              case __NR_close:
 
+                syscall_count++;
+                sysClose_count++;
                 // ADD CODE: handle openat() system call
 
                break;
 
-
              case __NR_exit:
 
+                syscall_count++;
+                sysExit_count++;
                 // ADD CODE: handle _exit() system call
 
                break;
 
              default:
 
+             for(int i = 0; i < 135; i++ ){
+               if((int)syscall_nr ==  syscall_tab[i].number){
+                 printf("(%s()(return: %d))  ", syscall_tab[i].name, ret);
+                 syscall_count++;
+                 sysOther_count++;
+               }
+             }
+
                 // ADD CODE: handle any other system call
 
                break;
-
-
            }
         }
-
       }
 
+
+
+
+      printf("\n\nSYSTEM CALL STATISTICS:              [TOTAL NUMBER OF SYSTEM CALLS: %d]\n\n", syscall_count);
+      printf("\nTOTALS: ");
+      printf("\nread(): %d", sysRead_count);
+      printf("\nwrite(): %d", sysWrite_count);
+      printf("\nopen(): %d", sysOpen_count);
+      printf("\nclose(): %d", sysClose_count);
+      printf("\nexit(): %d", sysExit_count);
+      printf("\nother syscalls: %d\n\n", sysOther_count);
 
       return 0;
 }
